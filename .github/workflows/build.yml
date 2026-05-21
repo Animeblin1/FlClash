@@ -109,6 +109,12 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Fix yaml_writer dependency (replace broken git ref with pub.dev)
+        run: |
+          perl -i -0777 -pe 's/  yaml_writer:\n    git:\n      url: https:\/\/github\.com\/chen08209\/yaml_writer\n      ref: master/  yaml_writer: ^2.1.0/' pubspec.yaml
+          echo "=== yaml_writer dependency patched ==="
+          grep -A1 'yaml_writer' pubspec.yaml || true
+
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -223,6 +229,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Fix yaml_writer dependency (replace broken git ref with pub.dev)
+        run: |
+          perl -i -0777 -pe 's/  yaml_writer:\n    git:\n      url: https:\/\/github\.com\/chen08209\/yaml_writer\n      ref: master/  yaml_writer: ^2.1.0/' pubspec.yaml
+          echo "=== yaml_writer dependency patched ==="
+          grep -A1 'yaml_writer' pubspec.yaml || true
 
       - name: Set up Go
         uses: actions/setup-go@v5
