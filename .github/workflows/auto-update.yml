@@ -1,0 +1,102 @@
+name: Auto-update Mihomo Core
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Channel to track'
+        required: true
+        default: 'stable'
+        type: choice
+        options:
+          - stable
+          - alpha
+          - both
+
+jobs:
+  check-and-update:
+    name: Check for new mihomo releases
+    runs-on: ubuntu-latest
+    outputs:
+      stable_updated: ${{ steps.check.outputs.stable_updated }}
+      alpha_updated: ${{ steps.check.outputs.alpha_updated }}
+      stable_tag: ${{ steps.check.outputs.stable_tag }}
+      alpha_tag: ${{ steps.check.outputs.alpha_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check current mihomo version
+        id: current
+        working-directory: core
+        run: |
+          CURRENT=$(grep 'metacubex/mihomo' go.mod | awk '{print $2}' | head -1)
+          echo "current=$CURRENT" >> $GITHUB_OUTPUT
+          echo "Current mihomo in go.mod: $CURRENT"
+
+      - name: Fetch latest mihomo versions
+        id: check
+        run: |
+          CHANNEL="${{ github.event.inputs.channel || 'stable' }}"
+          CURRENT="${{ steps.current.outputs.current }}"
+
+          STABLE=$(curl -fsSL \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/metacubex/mihomo/releases/latest" \
+            | jq -r '.tag_name')
+
+          ALPHA=$(curl -fsSL \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/metacubex/mihomo/releases" \
+            | jq -r '[.[] | select(.prerelease == true)] | first | .tag_name')
+
+          echo "stable_tag=${STABLE}" >> $GITHUB_OUTPUT
+          echo "alpha_tag=${ALPHA}" >> $GITHUB_OUTPUT
+
+          STABLE_UPDATED=false
+          ALPHA_UPDATED=false
+
+          if [[ "$CHANNEL" == "stable" || "$CHANNEL" == "both" ]]; then
+            if [[ "$CURRENT" != "$STABLE" && -n "$STABLE" && "$STABLE" != "null" ]]; then
+              STABLE_UPDATED=true
+              echo "ðŸ†• Stable update: $CURRENT â†’ $STABLE"
+            else
+              echo "âœ“ Stable up-to-date: $STABLE"
+            fi
+          fi
+
+          if [[ "$CHANNEL" == "alpha" || "$CHANNEL" == "both" ]]; then
+            if [[ "$CURRENT" != "$ALPHA" && -n "$ALPHA" && "$ALPHA" != "null" ]]; then
+              ALPHA_UPDATED=true
+              echo "ðŸ†• Alpha update: $CURRENT â†’ $ALPHA"
+            else
+              echo "âœ“ Alpha up-to-date: $ALPHA"
+            fi
+          fi
+
+          echo "stable_updated=$STABLE_UPDATED" >> $GITHUB_OUTPUT
+          echo "alpha_updated=$ALPHA_UPDATED" >> $GITHUB_OUTPUT
+
+  trigger-stable-build:
+    name: Trigger stable build
+    needs: check-and-update
+    if: needs.check-and-update.outputs.stable_updated == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      mihomo_channel: stable
+      mihomo_version: ''
+      build_platforms: android
+      create_release: true
+
+  trigger-alpha-build:
+    name: Trigger alpha build
+    needs: check-and-update
+    if: needs.check-and-update.outputs.alpha_updated == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      mihomo_channel: alpha
+      mihomo_version: ''
+      build_platforms: android
+      create_release: true
