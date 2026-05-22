@@ -143,6 +143,25 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
           echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ env.NDK_VERSION }}" >> $GITHUB_ENV
 
+      - name: Create debug keystore
+        run: |
+          mkdir -p android/app
+          keytool -genkey -v \
+            -keystore android/app/debug.jks \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Android Debug,O=Android,C=US"
+          cat > android/key.properties << 'EOF'
+          storePassword=android
+          keyPassword=android
+          keyAlias=androiddebugkey
+          storeFile=debug.jks
+          EOF
+
       - name: Update Mihomo core to ${{ needs.resolve-mihomo.outputs.tag }}
         working-directory: core
         run: |
@@ -171,8 +190,20 @@ jobs:
       - name: Flutter pub get
         run: flutter pub get
 
-      - name: Build Android APKs
-        run: dart setup.dart android
+      - name: Build Android APKs (direct flutter build)
+        run: |
+          set -x
+          echo "=== Starting direct flutter build ==="
+          
+          # Собираем напрямую через flutter, а не через setup.dart
+          flutter build apk \
+            --release \
+            --target-platform android-arm,android-arm64,android-x64 \
+            --split-per-abi \
+            --verbose 2>&1 | tee flutter-build.log
+          
+          echo "=== Build completed, checking outputs ==="
+          ls -la build/app/outputs/flutter-apk/ || true
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
 
